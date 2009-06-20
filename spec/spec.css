@@ -16,6 +16,7 @@ body { font-size: 10px; font-family: 'Lucida Grande', 'Helvetica', Verdana, sans
 td, tr, table { border-width: 4px; }
 blockquote:before, blockquote:after, q:before, q:after { content: ''; }
 a:link, a:hover { color: brown; }
+div > a, a span { color: grey; }
 ul li:first-child { border-top: none; }
 ul li:first-child, ul li:last-child { background-color: #333; }
 .p:first-letter { color: red; }
@@ -24,6 +25,7 @@ q:lang(no) { quotes: '~' '~'; }
 blockquote:before { color: red; }
 div { color: purple; }
 .duplicate { width: 11px; color: blue; }
+input[type='text'] { background-color: blue; }
 .transparent_box { background-color: #FFF; filter: alpha(opacity=60); opacity: 0.6; }
 .space { color: purple; font-color: yellow; }
 .no-semi-column { color: orange; }
