@@ -3,9 +3,10 @@ module Less
     # Compound properties, such as `border: 1px solid black`
     COMPOUND = {'font' => true, 'background' => false, 'border' => false }
     REGEX = {
-      :path     => /([#.][->#.\w ]+)?( ?> ?)?/,              # #header > .title
-      :selector => /[-\w #.,>*:\(\)\=\[\]']/,                 # .cow .milk > a
+      :path     => /((?>(?>[#.]?[-\w]+)>)+)?/,               # #header > .title
+      :selector => /[-\w #.,>*:\(\)\=\[\]']/,                # .cow .milk > a
       :variable => /@([-\w]+)/,                              # @milk-white
+      :accessor => /([.#]?[-\w]+)\[('?[-\w]+'?)\]/,          # .milk['color']
       :property => /@[-\w]+|[-a-z]+/,                        # font-size
       :color    => /#([a-zA-Z0-9]{3,6})\b/,                  # #f0f0f0
       :number   => /\d+(?>\.\d+)?/,                          # 24.8
@@ -105,20 +106,39 @@ module Less
     # Evaluate variables
     #
     def evaluate key, expression, path, node               
-      if expression.is_a? String and expression.include? '@' # There's a var to evaluate  
-        expression.scan /#{REGEX[:path]}#{REGEX[:variable]}/ do |var|
-          name = var.last
-          var = var.join.delete ' '
+      if expression.is_a? String
+        puts "======================"
+        puts "* " + key + ": " + expression
+        expression.scan /#{REGEX[:path]}(?>#{REGEX[:variable]}|#{REGEX[:accessor]})/ do |var|
+          p var
           
-          value = if var.include? '>'
-            @tree.find :var, var.split('>')                  # Try finding it in a specific namespace
-          else            
-           node.var(var) or @tree.nearest var, path          # Try local first, then nearest scope            
+          # Sub Expression
+          sub = [:trail, :var, :selector, :property].zip(var).inject({}) {|h,(a,b)| h.merge a => b }
+          
+          # Trail: .a > .b > .c >
+          trail = sub[:trail] ? sub[:trail].split('>') : []
+          name  = sub[:var] || sub[:selector]
+          
+          var = if sub[:selector]
+            type = sub[:property] =~ /'.+?'/ ? :prop : :var
+            trail + [name, sub[:property].delete("'")]
+          else
+            var
+          end.compact
+          
+          p "trail: |#{sub[:trail]}| name: |#{name}| prop: |#{sub[:property]}| var: |[#{var.join(', ')}]|"
+          
+          value = if var.size > 1
+            @tree.find type, var                  # Try finding it in a specific namespace
+          else
+            node.var name or @tree.nearest name, path          # Try local first, then nearest scope            
           end
           
           if value
+            replace = sub[:property] ? /#{name}\[#{sub[:property]}\]/ : /@#{name}/
+            puts "replacing: |#{trail}#{replace}| in |#{node[key]}| with #{value}";puts
             # Substitute variable with value
-            node[ key ] = node[ key ].gsub /#{REGEX[:path]}@#{name}/, value
+            node[ key ] = node[ key ].gsub /#{trail.join('>')}>?#{replace}/, value
           else
             node.delete key                                  # Discard the declaration if the variable wasn't found
           end
@@ -147,6 +167,8 @@ module Less
                   gsub(/(#{REGEX[:property]}): *([^\{\}]+?) *(;|(?=\}))/,'"\1"=>"\2",').  # Rules
                   gsub(/\}/, "},").                                                       # Closing }
                   gsub(/([, ]*)(#{REGEX[:selector]}+?)[ \n]*(?=\{)/, '\1"\2"=>').         # Selectors
+                  gsub(/ ?> ?/, '>').                                                     # `div > a` to `div>a`
+                  gsub(/ ?, ?/, ',').                                                     # `div, a` to `div,a`
                   gsub(/([.#][->\w .#]+);/, '"\\1" => :mixin,')                           # Mixins
       eval "{#{ hash }}"                                                                  # Return {hash}
     end
