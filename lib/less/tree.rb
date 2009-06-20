@@ -20,11 +20,14 @@ module Less
     # Find a variable or mixin from a specific path
     #
     def find what = :var, path = []
-      path.inject(self) do |branch, k|        
-        if what == :var && k == path.last
-          branch[:variables][ k ]
+      path.inject(self) do |branch, key|        
+        if key == path.last && what != :mixin
+          what == :prop ? branch[ key ] : branch[:variables][ key ]
         else
-          branch = branch[ k ] or raise PathError, path.join(' > ')
+          key = branch.keys.each do |k| 
+            break k if k.is_a? String and k.split(',').include? key
+          end
+          branch = branch[ key ] or raise PathError, path.join(' > ')
         end
       end
     end
