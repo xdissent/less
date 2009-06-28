@@ -6,7 +6,7 @@ module Less
       :path     => /([#.][->#.\w ]+)?( ?> ?)?/,              # #header > .title
       :selector => /[-\w #.,>*+:\(\)\=\[\]']/,               # .cow .milk > a
       :variable => /@([-\w]+)/,                              # @milk-white
-      :property => /@[-\w]+|[-a-z*0-9_]+/,                   # font-size
+      :property => /[-\w]+|[-a-z*0-9_]+/,                    # font-size
       :color    => /#([a-zA-Z0-9]{3,6})\b/,                  # #f0f0f0
       :number   => /\d+(?>\.\d+)?/,                          # 24.8
       :unit     => /px|em|pt|cm|mm|%/                        # em
@@ -19,7 +19,20 @@ module Less
       @tree = Tree.new self.hashify
     end
 
-    def compile     
+    def compile
+      #
+      # Parse the import statements
+      #
+          
+      @tree = @tree.traverse :leaf do |key, value, path, node|
+        if value == :import
+          node.delete key
+          import = Engine.new( File.read( key ) ).compile.to_tree
+          import.traverse :branch do |path, node|
+          end
+        end
+      end  
+    
       #
       # Parse the variables and mixins
       #
@@ -29,6 +42,7 @@ module Less
       # in the appropriate data structure in that branch. The declaration itself
       # can then be deleted.
       #
+      
       @tree = @tree.traverse :leaf do |key, value, path, node|
         matched = if match = key.match( REGEX[:variable] )          
           node[:variables] ||= Tree.new
@@ -138,17 +152,23 @@ module Less
       #   less:     color: black;
       #   hashify: "color" => "black"
       #
-      hash = self.gsub(/\r\n/, "\n").                                                     # m$
-                  gsub(/"/, "'").                                                         # " to '
-                  gsub(/'(.*?)'/) { "'" + CGI.escape( $1 ) + "'" }.                       # Escape string values
-                  gsub(/\/\/.*\n/, '').                                                   # Comments //
-                  gsub(/\/\*.*?\*\//m, '').                                               # Comments /*
-                  gsub(/\s+/, ' ').                                                       # Replace \t\n
-                  gsub(/(#{REGEX[:property]}): *([^\{\}]+?) *(;|(?=\}))/,'"\1"=>"\2",').  # Rules
-                  gsub(/\}/, "},").                                                       # Closing }
-                  gsub(/([, ]*)(#{REGEX[:selector]}+?)[ \n]*(?=\{)/, '\1"\2"=>').         # Selectors
-                  gsub(/([.#][->\w .#]+);/, '"\\1" => :mixin,')                           # Mixins
-      eval "{#{ hash }}"                                                                  # Return {hash}
+      hash = self.gsub(/\r\n/, "\n").                                                       # m$
+                  gsub(/"/, "'").                                                           # " to '
+                  gsub(/'(.*?)'/) { "'" + CGI.escape( $1 ) + "'" }.                         # Escape string values
+                  gsub(/\/\/.*\n/, '').                                                     # Comments //
+                  gsub(/\/\*.*?\*\//m, '').                                                 # Comments /*
+                  gsub(/\s+/, ' ').                                                         # Replace \t\n
+                  gsub(/(#{REGEX[:property]}): *([^\{\}]+?) *(;|(?=\}))/,'"\1"=>"\2",').    # Rules
+                  gsub(/\}/, "},").                                                         # Closing }
+                  gsub(/([, ]*)(#{REGEX[:selector]}+?)[ \n]*(?=\{)/, '\1"\2"=>').           # Selectors
+                  gsub(/([.#][->\w .#]+);/, '"\\1" => :mixin,').                            # Mixins
+                  gsub(/@import (?:url\()?'?([a-zA-Z0-9._\-]*)'?\)?;/, '"\\1" => :import,') # Imports
+      eval "{#{ hash }}"                                                                    # Return {hash}
     end
+    
+    def to_tree
+      @tree
+    end
+    
   end
 end

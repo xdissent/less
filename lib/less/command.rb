@@ -54,11 +54,11 @@ module Less
     def compile new = false
       begin
         # Create a new Less object with the contents of a file
-        css = File.read( @source )
+        # css = File.read( @source )
         # Process import rules
-        imports = css.scan(/(@import\s+(?:url\()?\s*(?:\'|\")?)([a-zA-Z0-9\-_.]*)((?:\'|\")?\)?;)/)
-        imports.each { |f| css = css.gsub(f.join, File.read(f[1])) }
-        css = Less::Engine.new(css).to_css @options[:inheritance]
+        # imports = css.scan(/(@import\s+(?:url\()?\s*(?:\'|\")?)([a-zA-Z0-9\-_.]*)((?:\'|\")?\)?;)/)
+        # imports.each { |f| css = css.gsub(f.join, File.read(f[1])) }
+        css = Less::Engine.new( File.read( @source ) ).to_css @options[:inheritance]
         css = css.delete " \n" if compress?
 
         File.open( @destination, "w" ) do |file|
