@@ -56,7 +56,7 @@ module Less
         # Create a new Less object with the contents of a file
         css = File.read( @source )
         # Process import rules
-        imports = css.scan(/(@import\s+(?:url\()?\s*(?:\'|\")?)([a-zA-Z0-9.]*)((?:\'|\")?\)?;)/)
+        imports = css.scan(/(@import\s+(?:url\()?\s*(?:\'|\")?)([a-zA-Z0-9\-_.]*)((?:\'|\")?\)?;)/)
         imports.each { |f| css = css.gsub(f.join, File.read(f[1])) }
         css = Less::Engine.new(css).to_css @options[:inheritance]
         css = css.delete " \n" if compress?
