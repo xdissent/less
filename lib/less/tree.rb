@@ -41,6 +41,24 @@ module Less
       values.compact.last
     end
     
+    def update_node path, key, value
+      path.inject(self) do |branch, k|
+        branch[ k ] ||= Tree.new
+        if k == path.last
+          branch[ k ][ key ] = value
+        else
+          branch[ k ]
+        end
+      end
+    end
+        
+    def update other_tree
+      other_tree.traverse :leaf do |key, value, path, node|
+        self.update_node(path, key, value)
+      end
+      self
+    end
+    
     def traverse by = :leaf, path = [], &blk
     #
     # Traverse the whole tree, returning each leaf or branch (recursive)
