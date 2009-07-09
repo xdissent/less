@@ -1,24 +1,6 @@
-module Less  
-  class Engine < String
-    # Compound properties, such as `border: 1px solid black`
-    COMPOUND = {'font' => true, 'background' => false, 'border' => false }
-    REGEX = {
-      :path     => /([#.][->#.\w ]+)?( ?> ?)?/,              # #header > .title
-      :selector => /[-\w #.,>*+:\(\)\=\[\]']/,               # .cow .milk > a
-      :variable => /@([-\w]+)/,                              # @milk-white
-      :property => /@[-\w]+|[-a-z*0-9_]+/,                   # font-size
-      :color    => /#([a-zA-Z0-9]{3,6})\b/,                  # #f0f0f0
-      :number   => /\d+(?>\.\d+)?/,                          # 24.8
-      :unit     => /px|em|pt|cm|mm|%/                        # em
-    }
-    REGEX[:numeric] = /#{REGEX[:number]}(#{REGEX[:unit]})?/
-    REGEX[:operand] = /#{REGEX[:color]}|#{REGEX[:numeric]}/
-    
-    def initialize s
-      super
-      @tree = Tree.new self.hashify
-    end
+$:.unshift File.dirname(__FILE__)
 
+<<<<<<< HEAD:lib/less/engine.rb
     def compile
       #
       # Parse the import statements
@@ -51,117 +33,60 @@ module Less
         end
         node.delete key if matched # Delete the property if it's LESS-specific
       end
+=======
+require 'engine/builder'
+require 'engine/nodes'
+>>>>>>> cloudhead/master:lib/less/engine.rb
 
-      #
-      # Evaluate mixins
-      #
-      @tree = @tree.traverse :branch do |path, node|
-        if node.include? :mixins
-          node[:mixins].each do |m|
-            @tree.find( :mixin, m.delete(' ').split('>') ).each {|k, v| node[ k ] = v }
-          end
-        end
+module Less
+  class Engine
+    attr_reader :css, :less
+    
+    def initialize obj
+      @less = if obj.is_a? File
+        @path = File.dirname(File.expand_path obj.path)
+        obj.read
+      elsif obj.is_a? String
+        obj.dup
+      else
+        raise ArgumentError, "argument must be an instance of File or String!"
       end
       
-      # Call `evaluate` on variables, such as '@dark: @light / 2'
-      @tree = @tree.traverse :branch do |path, node|
-        node.vars.each do |key, value|
-          evaluate key, value, path, node.vars
-        end if node.vars?
+      begin
+        require Less::PARSER
+      rescue LoadError
+        Treetop.load Less::GRAMMAR
+      end
+            
+      @parser = LessParser.new
+    end
+    
+    def parse env = Node::Element.new
+      root = @parser.parse(self.prepare)
+      
+      if root
+        @tree = root.build env.tap {|e| e.file = @path }
+      else
+        raise SyntaxError, @parser.failure_message
       end
       
-      # Call `evaluate` on css properties, such as 'font-size: @big'
-      @tree = @tree.traverse :leaf do |key, value, path, node|
-        evaluate key, value, path, node
-      end
-      
-      #
-      # Evaluate operations (2+2)
-      #
-      # Units are: 1px, 1em, 1%, #111
-      @tree = @tree.traverse :leaf do |key, value, path, node|
-        node[ key ] = value.gsub /(#{REGEX[:operand]}(\s?)[-+\/*](\4))+(#{REGEX[:operand]})/ do |operation|
-          # Disallow operations on certain compound declarations
-          if COMPOUND[ key ]
-            next value
-          else
-            raise CompoundOperationError, "#{key}: #{value}"
-          end if COMPOUND.include? key
-
-          if (unit = operation.scan(/#{REGEX[:numeric]}|(#)/i).flatten.compact.uniq).size <= 1
-            unit = unit.join            
-            operation = if unit == '#'
-              evaluate = lambda do |v| 
-                result = eval v
-                unit + ( result.zero?? '000' : result.to_s(16) )
-              end
-              operation.gsub REGEX[:color] do
-                hex = $1 * ( $1.size < 6 ? 6 / $1.size : 1 )
-                hex.to_i(16)
-              end.delete unit
-            else
-              evaluate = lambda {|v| eval( v ).to_s + unit }
-              operation.gsub REGEX[:unit], ''
-            end.to_s                
-            next if operation.match /[a-z]/i
-            evaluate.call operation
-          else
-            raise MixedUnitsError, value
-          end
-        end
-      end
+      log @tree.inspect
+            
+      @tree
     end
-    alias render compile
+    alias :to_tree :parse
     
-    #
-    # Evaluate variables
-    #
-    def evaluate key, expression, path, node               
-      if expression.is_a? String and expression.include? '@' # There's a var to evaluate  
-        expression.scan /#{REGEX[:path]}#{REGEX[:variable]}/ do |var|
-          name = var.last
-          var = var.join.delete ' '
-          
-          value = if var.include? '>'
-            @tree.find :var, var.split('>')                  # Try finding it in a specific namespace
-          else            
-           node.var(var) or @tree.nearest var, path          # Try local first, then nearest scope            
-          end
-          
-          if value
-            # Substitute variable with value
-            node[ key ] = node[ key ].gsub /#{REGEX[:path]}@#{name}/, value
-          else
-            node.delete key                                  # Discard the declaration if the variable wasn't found
-          end
-        end    
-      end
+    def to_css
+      "/* Generated with Less #{Less.version} */\n\n" +  
+      (@css || @css = self.parse.to_css)
     end
     
-    def to_css chain = :desc
-      self.compile.to_css chain
-    end
-    
-    def hashify
-    #
-    # Parse the LESS structure into a hash
-    #
-    ###
-      #   less:     color: black;
-      #   hashify: "color" => "black"
-      #
-      hash = self.gsub(/\r\n/, "\n").                                                         # m$
-                  gsub(/"/, "'").                                                             # " to '
-                  gsub(/'([^\/]*?)'/) { "'" + CGI.escape( $1 ) + "'" }.                       # Escape string values
-                  gsub(/\/\/.*\n/, '').                                                       # Comments //
-                  gsub(/\/\*.*?\*\//m, '').                                                   # Comments /*
-                  gsub(/\s+/, ' ').                                                           # Replace \t\n
-                  gsub(/(#{REGEX[:property]}): *([^\{\}]+?) *(;|(?=\}))/,'"\1"=>"\2",').      # Rules
-                  gsub(/\}/, "},").                                                           # Closing }
-                  gsub(/([, ]*)(#{REGEX[:selector]}+?)[ \n]*(?=\{)/, '\1"\2"=>').             # Selectors
-                  gsub(/([.#][->\w .#]+);/, '"\\1" => :mixin,').                              # Mixins
-                  gsub(/@import (?:url\()?'?([a-zA-Z0-9._\-\/]*)'?\)?;/, '"\\1" => :import,') # Imports
-      eval "{#{ hash }}"                                                                      # Return {hash}
+    def prepare
+      @less.gsub(/\r\n/, "\n").                                      # m$
+            gsub(/\t/, '  ')                                        # Tabs to spaces
+            #gsub(/('|")(.*?)(\1)/) { $1 + CGI.escape( $2 ) + $1 }   # Escape string values
+           # gsub(/\/\/.*\n/, '').                                    # Comments //
+          #  gsub(/\/\*.*?\*\//m, '')                                 # Comments /*
     end
     
     def to_tree
